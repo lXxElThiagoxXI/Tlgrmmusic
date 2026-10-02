@@ -4,40 +4,39 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import yt_dlp
 
-# Token de tu bot de Telegram
 TOKEN = "8645056069:AAGLd4zTu7uAgH84tujKSE_YdasP-N6E_BY"
-
-# Playlist fija de YouTube
 PLAYLIST_URL = "https://youtube.com/playlist?list=PLeWIQ3NZDVUU"
 HISTORIAL_FILE = "descargadas.txt"
 
 def cargar_historial():
-    """Lee las canciones que ya han sido descargadas."""
     if os.path.exists(HISTORIAL_FILE):
         with open(HISTORIAL_FILE, "r", encoding="utf-8") as f:
             return set(line.strip() for line in f if line.strip())
     return set()
 
 def guardar_en_historial(video_id):
-    """Guarda el ID de la canción enviada en el archivo de texto."""
     with open(HISTORIAL_FILE, "a", encoding="utf-8") as f:
         f.write(f"{video_id}\n")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Responde al comando /start."""
     await update.message.reply_text(
-        "¡Hola! Soy tu bot de música 24/7.\n\n"
-        "Usa el comando /playlist para revisar tu lista de reproducción de YouTube y enviar las canciones nuevas."
+        "¡Hola! Soy tu bot de música.\n\n"
+        "Usa el comando /playlist para revisar tu lista de reproducción y enviar las canciones pendientes."
     )
 
 async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Obtiene y procesa las canciones de la playlist."""
     msg = await update.message.reply_text("🔎 Revisando la lista de reproducción...")
     historial = cargar_historial()
 
+    # Opciones para leer la lista evitando el bloqueo de bot
     ydl_opts_info = {
         'extract_flat': True,
         'quiet': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios']
+            }
+        }
     }
 
     try:
@@ -50,10 +49,9 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         info = await loop.run_in_executor(None, get_info)
 
         if 'entries' not in info or not info['entries']:
-            await msg.edit_text("❌ No se pudieron obtener videos de la lista de reproducción.")
+            await msg.edit_text("❌ No se pudieron obtener videos de la lista.")
             return
 
-        # Filtrar canciones que aún no están en el historial
         pendientes = [e for e in info['entries'] if e and e.get('id') and e.get('id') not in historial]
 
         if not pendientes:
@@ -61,12 +59,13 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         total = len(pendientes)
-        await msg.edit_text(f"🎵 Se encontraron {total} canción(es) nueva(s). Procesando...")
+        await msg.edit_text(f"🎵 Se encontraron {total} canción(es) pendiente(s). Procesando...")
 
         for index, entry in enumerate(pendientes, start=1):
             video_id = entry['id']
             video_url = f"https://www.youtube.com/watch?v={video_id}"
 
+            # Opciones de descarga con imitación de cliente de Android/iOS para saltar el aviso "Sign in"
             ydl_opts_download = {
                 'format': 'bestaudio/best',
                 'postprocessors': [{
@@ -76,7 +75,12 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 }],
                 'outtmpl': f'song_{video_id}.%(ext)s',
                 'quiet': True,
-                'noplaylist': True
+                'noplaylist': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android', 'ios']
+                    }
+                }
             }
 
             def download_single():
@@ -98,7 +102,7 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     os.remove(filename)
                     guardar_en_historial(video_id)
             except Exception as inner_e:
-                await update.message.reply_text(f"⚠️️ Error procesando la canción ID {video_id}: {str(inner_e)}")
+                await update.message.reply_text(f"⚠ Error con la canción ID {video_id}: {str(inner_e)}")
                 continue
 
     except Exception as e:
@@ -109,5 +113,5 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("playlist", procesar_playlist))
 
-    print("Bot activo y escuchando comandos...")
+    print("Bot activo...")
     app.run_polling()
