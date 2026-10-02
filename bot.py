@@ -4,7 +4,10 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import yt_dlp
 
-TOKEN = "8645056069:AAGLd4zTu7uAgH84tujKSE_YdasP-N6E_BY"
+# Tu nuevo token limpio
+TOKEN = "8645056069:AAEMGHa6ETOmRM1SgK0f23DZ70DFjnibluU"
+
+# Playlist fija de YouTube
 PLAYLIST_URL = "https://youtube.com/playlist?list=PLeWIQ3NZDVUU"
 HISTORIAL_FILE = "descargadas.txt"
 
@@ -20,15 +23,14 @@ def guardar_en_historial(video_id):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "¡Hola! Soy tu bot de música.\n\n"
-        "Usa el comando /playlist para revisar tu lista de reproducción y enviar las canciones pendientes."
+        "¡Hola! Soy tu bot privado de música 24/7.\n\n"
+        "Usa el comando /playlist para sincronizar e ir descargando las canciones de tu lista de YouTube."
     )
 
 async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔎 Revisando la lista de reproducción...")
     historial = cargar_historial()
 
-    # Opciones para leer la lista evitando el bloqueo de bot
     ydl_opts_info = {
         'extract_flat': True,
         'quiet': True,
@@ -49,7 +51,7 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         info = await loop.run_in_executor(None, get_info)
 
         if 'entries' not in info or not info['entries']:
-            await msg.edit_text("❌ No se pudieron obtener videos de la lista.")
+            await msg.edit_text("❌ No se pudieron obtener canciones de la lista.")
             return
 
         pendientes = [e for e in info['entries'] if e and e.get('id') and e.get('id') not in historial]
@@ -65,7 +67,6 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             video_id = entry['id']
             video_url = f"https://www.youtube.com/watch?v={video_id}"
 
-            # Opciones de descarga con imitación de cliente de Android/iOS para saltar el aviso "Sign in"
             ydl_opts_download = {
                 'format': 'bestaudio/best',
                 'postprocessors': [{
@@ -113,5 +114,5 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("playlist", procesar_playlist))
 
-    print("Bot activo...")
+    print("Bot activo correctamente...")
     app.run_polling()
