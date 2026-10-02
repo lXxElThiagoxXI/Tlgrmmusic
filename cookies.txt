@@ -1,0 +1,11 @@
+# Netscape HTTP Cookie File
+# https://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file! Do not edit.
+
+.youtube.com	TRUE	/	TRUE	1806533823	__Secure-BUCKET	CPwD
+.youtube.com	TRUE	/	TRUE	1806533823	__Secure-YNID	22.YT=LCpaS3zBwcKqEq_DF5ZtjEm64GZq2_P7-_SM7cbpacCpUWx0jABqlHI6mjtKleWGSefjV_Jvs_OeeuJcQodPZ2eeL4vdNPIUbsIESjh2pQ8VY28rFHnPrWiKJGlH8z4Yfb4XS5JZNUYxkqseWU198hGCo3VZ5k19mREq6DIfONfTGHYzRX0oHOlEA0mqsFzw_Svxhks35iFnggqI3TsxyD49mQZP8r0KKXNVKpHhQL0hde9pL-Xf-fFITYxBuQokQ8eVZgOMGSiV3OaxKxm386c2Qg2m8Oj5Ws095AglxIohVqOSYHkgIGM6uEhxLhTbeOC85_KUgxHAZOTYA8W8PA
+.youtube.com	TRUE	/	TRUE	1790983623	GPS	1
+.youtube.com	TRUE	/	TRUE	0	YSC	SigaKjQvCRM
+.youtube.com	TRUE	/	TRUE	1806533832	VISITOR_INFO1_LIVE	yA3z8OOCUiU
+.youtube.com	TRUE	/	TRUE	1806533832	VISITOR_PRIVACY_METADATA	CgJDTxIEGgAgXA%3D%3D
+.youtube.com	TRUE	/	TRUE	1825541831	PREF	f4=4000000&f6=40000000&tz=America.Bogota
