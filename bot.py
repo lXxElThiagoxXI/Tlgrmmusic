@@ -4,12 +4,10 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import yt_dlp
 
-# Tu nuevo token limpio
 TOKEN = "8645056069:AAEMGHa6ETOmRM1SgK0f23DZ70DFjnibluU"
-
-# Playlist fija de YouTube
 PLAYLIST_URL = "https://youtube.com/playlist?list=PLeWIQ3NZDVUU"
 HISTORIAL_FILE = "descargadas.txt"
+COOKIES_FILE = "cookies.txt"
 
 def cargar_historial():
     if os.path.exists(HISTORIAL_FILE):
@@ -21,31 +19,55 @@ def guardar_en_historial(video_id):
     with open(HISTORIAL_FILE, "a", encoding="utf-8") as f:
         f.write(f"{video_id}\n")
 
+def obtener_opciones(download=False, video_id=None):
+    # Clientes de YouTube que saltan restricciones de IP de datacenters
+    opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'nocheckcertificate': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android_vr', 'tv_embedded', 'ios'],
+                'skip': ['webpage', 'configs']
+            }
+        }
+    }
+
+    # Cargar cookies si el archivo está presente en el directorio
+    if os.path.exists(COOKIES_FILE):
+        opts['cookiefile'] = COOKIES_FILE
+
+    if download:
+        opts.update({
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'outtmpl': f'song_{video_id}.%(ext)s',
+            'noplaylist': True,
+        })
+    else:
+        opts['extract_flat'] = True
+
+    return opts
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "¡Hola! Soy tu bot privado de música 24/7.\n\n"
-        "Usa el comando /playlist para sincronizar e ir descargando las canciones de tu lista de YouTube."
+        "Usa /playlist para sincronizar y descargar tu lista de reproducción."
     )
 
 async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔎 Revisando la lista de reproducción...")
     historial = cargar_historial()
 
-    ydl_opts_info = {
-        'extract_flat': True,
-        'quiet': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'ios']
-            }
-        }
-    }
-
     try:
         loop = asyncio.get_event_loop()
 
         def get_info():
-            with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
+            with yt_dlp.YoutubeDL(obtener_opciones(download=False)) as ydl:
                 return ydl.extract_info(PLAYLIST_URL, download=False)
 
         info = await loop.run_in_executor(None, get_info)
@@ -67,25 +89,8 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             video_id = entry['id']
             video_url = f"https://www.youtube.com/watch?v={video_id}"
 
-            ydl_opts_download = {
-                'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-                'outtmpl': f'song_{video_id}.%(ext)s',
-                'quiet': True,
-                'noplaylist': True,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['android', 'ios']
-                    }
-                }
-            }
-
             def download_single():
-                with yt_dlp.YoutubeDL(ydl_opts_download) as ydl:
+                with yt_dlp.YoutubeDL(obtener_opciones(download=True, video_id=video_id)) as ydl:
                     return ydl.extract_info(video_url, download=True)
 
             try:
@@ -114,5 +119,5 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("playlist", procesar_playlist))
 
-    print("Bot activo correctamente...")
+    print("Bot activo...")
     app.run_polling()
