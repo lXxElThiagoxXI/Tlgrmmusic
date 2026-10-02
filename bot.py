@@ -20,26 +20,25 @@ def guardar_en_historial(video_id):
         f.write(f"{video_id}\n")
 
 def obtener_opciones(download=False, video_id=None):
+    # Cliente 'android_vr' permite saltar la verificación de bot sin depender de cookies estrictas
     opts = {
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios', 'mweb'],
-                'skip': ['webpage', 'configs']
+                'player_client': ['android_vr', 'web'],
+                'player_skip': ['js', 'configs']
             }
         }
     }
 
-    # Carga las cookies de sesión si el archivo existe
     if os.path.exists(COOKIES_FILE):
         opts['cookiefile'] = COOKIES_FILE
 
     if download:
         opts.update({
-            'format': 'ba/b',  # Acepta cualquier flujo disponible para evitar errores
-            'format_sort': ['res', 'ext:mp4:m4a'],
+            'format': 'bestaudio/best',
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
