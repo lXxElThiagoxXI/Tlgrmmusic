@@ -20,26 +20,26 @@ def guardar_en_historial(video_id):
         f.write(f"{video_id}\n")
 
 def obtener_opciones(download=False, video_id=None):
-    # Clientes de YouTube que saltan restricciones de IP de datacenters
     opts = {
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android_vr', 'tv_embedded', 'ios'],
+                'player_client': ['android', 'ios', 'mweb'],
                 'skip': ['webpage', 'configs']
             }
         }
     }
 
-    # Cargar cookies si el archivo está presente en el directorio
+    # Carga las cookies de sesión si el archivo existe
     if os.path.exists(COOKIES_FILE):
         opts['cookiefile'] = COOKIES_FILE
 
     if download:
         opts.update({
-            'format': 'bestaudio/best',
+            'format': 'ba/b',  # Acepta cualquier flujo disponible para evitar errores
+            'format_sort': ['res', 'ext:mp4:m4a'],
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
