@@ -8,6 +8,7 @@ import yt_dlp
 TOKEN = "8645056069:AAEMGHa6ETOmRM1SgK0f23DZ70DFjnibluU"
 PLAYLIST_URL = "https://youtube.com/playlist?list=PLeWIQ3NZDVUU"
 HISTORIAL_FILE = "descargadas.txt"
+COOKIES_FILE = "cookies.txt"
 
 def cargar_historial():
     if os.path.exists(HISTORIAL_FILE):
@@ -21,8 +22,9 @@ def guardar_en_historial(video_id):
 
 def descargar_musica(video_url, video_id, output_path):
     """
-    Sistema Híbrido: Intenta primero por API externa (Cobalt) 
-    y si falla conmuta automáticamente a yt-dlp con extracción FFmpeg.
+    Sistema Híbrido:
+    1. Intenta por la API pública de Cobalt.
+    2. Si falla, pasa a yt-dlp usando cookies.txt (si existe) + FFmpeg.
     """
     # 1. INTENTO CON COBALT
     try:
@@ -49,9 +51,9 @@ def descargar_musica(video_url, video_id, output_path):
                             f.write(chunk)
                     return True
     except Exception:
-        pass # Si falla Cobalt, continúa al método de respaldo de inmediato
+        pass # Si falla Cobalt, se apoya en el método secundario con yt-dlp y cookies
 
-    # 2. RESPALDO DIRECTO CON YT-DLP (MWEB / WEB)
+    # 2. RESPALDO DIRECTO CON YT-DLP Y COOKIES
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -71,6 +73,10 @@ def descargar_musica(video_url, video_id, output_path):
         'outtmpl': f'song_{video_id}.%(ext)s',
         'noplaylist': True,
     }
+
+    # Asigna cookies.txt si el archivo está subido en el servidor
+    if os.path.exists(COOKIES_FILE):
+        ydl_opts['cookiefile'] = COOKIES_FILE
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.extract_info(video_url, download=True)
@@ -92,6 +98,9 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'quiet': True,
         'no_warnings': True,
     }
+
+    if os.path.exists(COOKIES_FILE):
+        ydl_opts_playlist['cookiefile'] = COOKIES_FILE
 
     try:
         loop = asyncio.get_event_loop()
