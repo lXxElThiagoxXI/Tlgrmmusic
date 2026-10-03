@@ -1,5 +1,6 @@
 import os
 import asyncio
+import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import yt_dlp
@@ -7,7 +8,6 @@ import yt_dlp
 TOKEN = "8645056069:AAEMGHa6ETOmRM1SgK0f23DZ70DFjnibluU"
 PLAYLIST_URL = "https://youtube.com/playlist?list=PLeWIQ3NZDVUU"
 HISTORIAL_FILE = "descargadas.txt"
-COOKIES_FILE = "cookies.txt"
 
 def cargar_historial():
     if os.path.exists(HISTORIAL_FILE):
@@ -19,56 +19,29 @@ def guardar_en_historial(video_id):
     with open(HISTORIAL_FILE, "a", encoding="utf-8") as f:
         f.write(f"{video_id}\n")
 
-def descargar_con_fallbacks(video_url, video_id):
-    """
-    Intenta descargar la canción probando diferentes configuraciones 
-    y clientes para evitar bloqueos de formato e IP.
-    """
-    # Lista de intentos con diferentes estrategias de cliente y formato
-    intentos = [
-        {
-            'format': 'ba/b',
-            'extractor_args': {'youtube': {'player_client': ['android', 'ios']}}
-        },
-        {
-            'format': 'bestaudio/best',
-            'extractor_args': {'youtube': {'player_client': ['tv_embedded', 'mweb']}}
-        },
-        {
-            'format': 'best',
-            'extractor_args': {'youtube': {'player_client': ['android_vr', 'web']}}
-        }
-    ]
+def descargar_con_cobalt(video_url, output_path):
+    """ Descarga el MP3 usando la API de Cobalt para saltar el bloqueo de IP """
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "url": video_url,
+        "downloadMode": "audio",
+        "audioFormat": "mp3"
+    }
+    
+    # Petición a la API pública de Cobalt
+    response = requests.post("https://api.cobalt.tools/api/json", json=payload, headers=headers)
+    data = response.json()
 
-    ultimo_error = None
-
-    for configuracion in intentos:
-        opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'nocheckcertificate': True,
-            'format': configuracion['format'],
-            'extractor_args': configuracion['extractor_args'],
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'outtmpl': f'song_{video_id}.%(ext)s',
-            'noplaylist': True,
-        }
-
-        if os.path.exists(COOKIES_FILE):
-            opts['cookiefile'] = COOKIES_FILE
-
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(video_url, download=True)
-        except Exception as err:
-            ultimo_error = err
-            continue  # Si falla un intento, pasa automáticamente al siguiente cliente
-
-    raise ultimo_error
+    if "url" in data:
+        audio_data = requests.get(data["url"]).content
+        with open(output_path, "wb") as f:
+            f.write(audio_data)
+        return True
+    else:
+        raise Exception("Cobalt no pudo procesar este enlace.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -80,14 +53,12 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔎 Revisando la lista de reproducción...")
     historial = cargar_historial()
 
-    # Opciones sencillas para leer la lista
+    # Extraer solo la lista de IDs de videos
     ydl_opts_playlist = {
         'extract_flat': True,
         'quiet': True,
         'no_warnings': True,
     }
-    if os.path.exists(COOKIES_FILE):
-        ydl_opts_playlist['cookiefile'] = COOKIES_FILE
 
     try:
         loop = asyncio.get_event_loop()
@@ -114,11 +85,12 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for index, entry in enumerate(pendientes, start=1):
             video_id = entry['id']
             video_url = f"https://www.youtube.com/watch?v={video_id}"
+            title = entry.get('title', f'Canción {video_id}')
+            filename = f"song_{video_id}.mp3"
 
             try:
-                single_info = await loop.run_in_executor(None, lambda: descargar_con_fallbacks(video_url, video_id))
-                filename = f"song_{video_id}.mp3"
-                title = single_info.get('title', 'Audio de YouTube') if single_info else 'Audio de YouTube'
+                # Intenta descargar mediante API externa anti-bloqueo
+                await loop.run_in_executor(None, lambda: descargar_con_cobalt(video_url, filename))
 
                 if os.path.exists(filename):
                     with open(filename, 'rb') as audio:
@@ -130,7 +102,7 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     os.remove(filename)
                     guardar_en_historial(video_id)
             except Exception as inner_e:
-                await update.message.reply_text(f"⚠ Error con la canción ID {video_id}: {str(inner_e)}")
+                await update.message.reply_text(f"⚠ Error con {title}: {str(inner_e)}")
                 continue
 
     except Exception as e:
