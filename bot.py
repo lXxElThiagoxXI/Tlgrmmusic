@@ -20,10 +20,11 @@ def guardar_en_historial(video_id):
         f.write(f"{video_id}\n")
 
 def descargar_con_cobalt(video_url, output_path):
-    """ Descarga el MP3 usando la API de Cobalt para saltar el bloqueo de IP """
+    """ Envía la solicitud a la API de Cobalt emulando un navegador real """
     headers = {
         "Accept": "application/json",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     payload = {
         "url": video_url,
@@ -31,17 +32,24 @@ def descargar_con_cobalt(video_url, output_path):
         "audioFormat": "mp3"
     }
     
-    # Petición a la API pública de Cobalt
-    response = requests.post("https://api.cobalt.tools/api/json", json=payload, headers=headers)
-    data = response.json()
+    response = requests.post("https://api.cobalt.tools/api/json", json=payload, headers=headers, timeout=15)
+    
+    if response.status_code == 200:
+        data = response.json()
+        download_url = data.get("url")
+        
+        if not download_url and data.get("status") == "redirect":
+            download_url = data.get("url")
 
-    if "url" in data:
-        audio_data = requests.get(data["url"]).content
-        with open(output_path, "wb") as f:
-            f.write(audio_data)
-        return True
-    else:
-        raise Exception("Cobalt no pudo procesar este enlace.")
+        if download_url:
+            audio_req = requests.get(download_url, headers=headers, stream=True)
+            if audio_req.status_code == 200:
+                with open(output_path, "wb") as f:
+                    for chunk in audio_req.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                return True
+                
+    raise Exception(f"Cobalt no pudo procesar este enlace (Estado HTTP: {response.status_code}).")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -53,7 +61,6 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔎 Revisando la lista de reproducción...")
     historial = cargar_historial()
 
-    # Extraer solo la lista de IDs de videos
     ydl_opts_playlist = {
         'extract_flat': True,
         'quiet': True,
@@ -89,7 +96,6 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             filename = f"song_{video_id}.mp3"
 
             try:
-                # Intenta descargar mediante API externa anti-bloqueo
                 await loop.run_in_executor(None, lambda: descargar_con_cobalt(video_url, filename))
 
                 if os.path.exists(filename):
