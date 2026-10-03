@@ -19,36 +19,63 @@ def guardar_en_historial(video_id):
     with open(HISTORIAL_FILE, "a", encoding="utf-8") as f:
         f.write(f"{video_id}\n")
 
-def descargar_con_cobalt(video_url, output_path):
-    """ Envía la solicitud al endpoint oficial de Cobalt sin subrutas que devuelvan 404 """
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    }
-    
-    payload = {
-        "url": video_url,
-        "downloadMode": "audio",
-        "audioFormat": "mp3"
-    }
-    
-    # Endpoint principal v10
-    response = requests.post("https://api.cobalt.tools", json=payload, headers=headers, timeout=20)
-    
-    if response.status_code in (200, 201):
-        data = response.json()
-        download_url = data.get("url")
+def descargar_musica(video_url, video_id, output_path):
+    """
+    Sistema Híbrido: Intenta primero por API externa (Cobalt) 
+    y si falla conmuta automáticamente a yt-dlp con extracción FFmpeg.
+    """
+    # 1. INTENTO CON COBALT
+    try:
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        }
+        payload = {
+            "url": video_url,
+            "downloadMode": "audio",
+            "audioFormat": "mp3"
+        }
         
-        if download_url:
-            audio_req = requests.get(download_url, headers=headers, stream=True, timeout=60)
-            if audio_req.status_code == 200:
-                with open(output_path, "wb") as f:
-                    for chunk in audio_req.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                return True
-                
-    raise Exception(f"Cobalt no pudo procesar este enlace (Estado HTTP: {response.status_code}).")
+        res = requests.post("https://api.cobalt.tools", json=payload, headers=headers, timeout=12)
+        if res.status_code in (200, 201):
+            data = res.json()
+            dl_url = data.get("url")
+            if dl_url:
+                audio_res = requests.get(dl_url, headers=headers, stream=True, timeout=40)
+                if audio_res.status_code == 200:
+                    with open(output_path, "wb") as f:
+                        for chunk in audio_res.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    return True
+    except Exception:
+        pass # Si falla Cobalt, continúa al método de respaldo de inmediato
+
+    # 2. RESPALDO DIRECTO CON YT-DLP (MWEB / WEB)
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'nocheckcertificate': True,
+        'format': 'bestaudio/best',
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['mweb', 'web'],
+                'player_skip': ['configs']
+            }
+        },
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        'outtmpl': f'song_{video_id}.%(ext)s',
+        'noplaylist': True,
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.extract_info(video_url, download=True)
+    
+    return True
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -95,7 +122,7 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             filename = f"song_{video_id}.mp3"
 
             try:
-                await loop.run_in_executor(None, lambda: descargar_con_cobalt(video_url, filename))
+                await loop.run_in_executor(None, lambda: descargar_musica(video_url, video_id, filename))
 
                 if os.path.exists(filename):
                     with open(filename, 'rb') as audio:
