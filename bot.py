@@ -19,22 +19,36 @@ def guardar_en_historial(video_id):
     with open(HISTORIAL_FILE, "a", encoding="utf-8") as f:
         f.write(f"{video_id}\n")
 
-def obtener_opciones(download=False, video_id=None):
-    opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'nocheckcertificate': True,
-    }
-
-    # Si subiste el cookies.txt, lo usa automáticamente
-    if os.path.exists(COOKIES_FILE):
-        opts['cookiefile'] = COOKIES_FILE
-
-    if download:
-        opts.update({
-            # Sin filtro de formato restringido: toma el video/audio disponible
-            # y FFmpeg se encarga de convertirlo a MP3
+def descargar_con_fallbacks(video_url, video_id):
+    """
+    Intenta descargar la canción probando diferentes configuraciones 
+    y clientes para evitar bloqueos de formato e IP.
+    """
+    # Lista de intentos con diferentes estrategias de cliente y formato
+    intentos = [
+        {
+            'format': 'ba/b',
+            'extractor_args': {'youtube': {'player_client': ['android', 'ios']}}
+        },
+        {
+            'format': 'bestaudio/best',
+            'extractor_args': {'youtube': {'player_client': ['tv_embedded', 'mweb']}}
+        },
+        {
             'format': 'best',
+            'extractor_args': {'youtube': {'player_client': ['android_vr', 'web']}}
+        }
+    ]
+
+    ultimo_error = None
+
+    for configuracion in intentos:
+        opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'nocheckcertificate': True,
+            'format': configuracion['format'],
+            'extractor_args': configuracion['extractor_args'],
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
@@ -42,11 +56,19 @@ def obtener_opciones(download=False, video_id=None):
             }],
             'outtmpl': f'song_{video_id}.%(ext)s',
             'noplaylist': True,
-        })
-    else:
-        opts['extract_flat'] = True
+        }
 
-    return opts
+        if os.path.exists(COOKIES_FILE):
+            opts['cookiefile'] = COOKIES_FILE
+
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(video_url, download=True)
+        except Exception as err:
+            ultimo_error = err
+            continue  # Si falla un intento, pasa automáticamente al siguiente cliente
+
+    raise ultimo_error
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -58,11 +80,20 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔎 Revisando la lista de reproducción...")
     historial = cargar_historial()
 
+    # Opciones sencillas para leer la lista
+    ydl_opts_playlist = {
+        'extract_flat': True,
+        'quiet': True,
+        'no_warnings': True,
+    }
+    if os.path.exists(COOKIES_FILE):
+        ydl_opts_playlist['cookiefile'] = COOKIES_FILE
+
     try:
         loop = asyncio.get_event_loop()
 
         def get_info():
-            with yt_dlp.YoutubeDL(obtener_opciones(download=False)) as ydl:
+            with yt_dlp.YoutubeDL(ydl_opts_playlist) as ydl:
                 return ydl.extract_info(PLAYLIST_URL, download=False)
 
         info = await loop.run_in_executor(None, get_info)
@@ -84,14 +115,10 @@ async def procesar_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             video_id = entry['id']
             video_url = f"https://www.youtube.com/watch?v={video_id}"
 
-            def download_single():
-                with yt_dlp.YoutubeDL(obtener_opciones(download=True, video_id=video_id)) as ydl:
-                    return ydl.extract_info(video_url, download=True)
-
             try:
-                single_info = await loop.run_in_executor(None, download_single)
+                single_info = await loop.run_in_executor(None, lambda: descargar_con_fallbacks(video_url, video_id))
                 filename = f"song_{video_id}.mp3"
-                title = single_info.get('title', 'Audio de YouTube')
+                title = single_info.get('title', 'Audio de YouTube') if single_info else 'Audio de YouTube'
 
                 if os.path.exists(filename):
                     with open(filename, 'rb') as audio:
