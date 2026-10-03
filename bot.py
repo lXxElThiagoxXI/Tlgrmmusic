@@ -9,6 +9,12 @@ TOKEN = "8645056069:AAEMGHa6ETOmRM1SgK0f23DZ70DFjnibluU"
 PLAYLIST_URL = "https://youtube.com/playlist?list=PLeWIQ3NZDVUU"
 HISTORIAL_FILE = "descargadas.txt"
 
+# Lista de instancias públicas de Cobalt para mayor estabilidad
+COBALT_INSTANCES = [
+    "https://api.cobalt.tools/",
+    "https://cobalt-api.koyeb.app/"
+]
+
 def cargar_historial():
     if os.path.exists(HISTORIAL_FILE):
         with open(HISTORIAL_FILE, "r", encoding="utf-8") as f:
@@ -20,36 +26,47 @@ def guardar_en_historial(video_id):
         f.write(f"{video_id}\n")
 
 def descargar_con_cobalt(video_url, output_path):
-    """ Envía la solicitud a la API de Cobalt emulando un navegador real """
+    """ Envía la solicitud a Cobalt usando el esquema actualizado del API v10 """
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
+    
+    # Payload ajustado a las especificaciones vigentes de Cobalt
     payload = {
         "url": video_url,
         "downloadMode": "audio",
-        "audioFormat": "mp3"
+        "audioFormat": "mp3",
+        "youtubeVideoCodec": "h264"
     }
     
-    response = requests.post("https://api.cobalt.tools/api/json", json=payload, headers=headers, timeout=15)
-    
-    if response.status_code == 200:
-        data = response.json()
-        download_url = data.get("url")
-        
-        if not download_url and data.get("status") == "redirect":
-            download_url = data.get("url")
+    ultimo_error = None
 
-        if download_url:
-            audio_req = requests.get(download_url, headers=headers, stream=True)
-            if audio_req.status_code == 200:
-                with open(output_path, "wb") as f:
-                    for chunk in audio_req.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                return True
+    for base_url in COBALT_INSTANCES:
+        try:
+            response = requests.post(base_url, json=payload, headers=headers, timeout=15)
+            
+            if response.status_code in (200, 201):
+                data = response.json()
                 
-    raise Exception(f"Cobalt no pudo procesar este enlace (Estado HTTP: {response.status_code}).")
+                # Obtener la URL de descarga según el tipo de respuesta (tunnel, picker o redirect)
+                download_url = data.get("url")
+                
+                if download_url:
+                    audio_req = requests.get(download_url, headers=headers, stream=True, timeout=30)
+                    if audio_req.status_code == 200:
+                        with open(output_path, "wb") as f:
+                            for chunk in audio_req.iter_content(chunk_size=8192):
+                                f.write(chunk)
+                        return True
+            else:
+                ultimo_error = f"Estado HTTP: {response.status_code}"
+        except Exception as err:
+            ultimo_error = str(err)
+            continue
+
+    raise Exception(f"Cobalt no pudo procesar este enlace ({ultimo_error}).")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
